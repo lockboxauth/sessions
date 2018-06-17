@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/apex/log"
 	jwt "github.com/dgrijalva/jwt-go"
 	"impractical.co/pqarrays"
+	yall "yall.in"
 )
 
 const (
@@ -33,7 +33,6 @@ type AccessTokenClaims struct {
 type Dependencies struct {
 	JWTPrivateKey string
 	JWTPublicKey  string
-	Log           *log.Logger
 }
 
 func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string, error) {
@@ -56,7 +55,7 @@ func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken,
 		return d.JWTPublicKey, nil
 	})
 	if err != nil {
-		d.Log.WithError(err).Debug("Error validating token.")
+		yall.FromContext(ctx).WithError(err).Debug("Error validating token.")
 		return AccessToken{}, ErrInvalidToken
 	}
 	claims, ok := tok.Claims.(AccessTokenClaims)
