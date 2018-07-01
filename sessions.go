@@ -3,6 +3,8 @@ package sessions
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -70,4 +72,17 @@ func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken,
 		Scopes:      claims.Scopes,
 		CreatedAt:   time.Unix(claims.IssuedAt, 0),
 	}, nil
+}
+
+func (d Dependencies) TokenFromRequest(r *http.Request) (*AccessToken, error) {
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return nil, nil
+	}
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return nil, ErrInvalidToken
+	}
+	auth = strings.TrimPrefix(auth, "Bearer ")
+	tok, err := d.Validate(r.Context(), auth)
+	return &tok, err
 }
