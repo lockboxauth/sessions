@@ -36,8 +36,7 @@ type AccessTokenClaims struct {
 }
 
 type Dependencies struct {
-	JWTPrivateKey string
-	JWTPublicKey  string
+	JWTSecret string
 }
 
 func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string, error) {
@@ -52,7 +51,7 @@ func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string,
 			Subject:   token.ProfileID,
 		},
 		Scopes: token.Scopes,
-	}).SignedString([]byte(d.JWTPrivateKey))
+	}).SignedString([]byte(d.JWTSecret))
 }
 
 func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken, error) {
@@ -60,7 +59,7 @@ func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken,
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, ErrInvalidSigningMethod
 		}
-		return []byte(d.JWTPublicKey), nil
+		return []byte(d.JWTSecret), nil
 	})
 	if err != nil {
 		yall.FromContext(ctx).WithError(err).Debug("Error validating token.")
