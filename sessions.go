@@ -16,7 +16,10 @@ const (
 	accessLength = 1 * time.Hour
 )
 
-var ErrInvalidToken = errors.New("invalid token")
+var (
+	ErrInvalidToken         = errors.New("invalid token")
+	ErrInvalidSigningMethod = errors.New("invalid signing method")
+)
 
 type AccessToken struct {
 	ID          string
@@ -49,18 +52,21 @@ func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string,
 			Subject:   token.ProfileID,
 		},
 		Scopes: token.Scopes,
-	}).SignedString(d.JWTPrivateKey)
+	}).SignedString([]byte(d.JWTPrivateKey))
 }
 
 func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken, error) {
-	tok, err := jwt.Parse(jwtVal, func(token *jwt.Token) (interface{}, error) {
-		return d.JWTPublicKey, nil
+	tok, err := jwt.ParseWithClaims(jwtVal, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidSigningMethod
+		}
+		return []byte(d.JWTPublicKey), nil
 	})
 	if err != nil {
 		yall.FromContext(ctx).WithError(err).Debug("Error validating token.")
 		return AccessToken{}, ErrInvalidToken
 	}
-	claims, ok := tok.Claims.(AccessTokenClaims)
+	claims, ok := tok.Claims.(*AccessTokenClaims)
 	if !ok {
 		return AccessToken{}, ErrInvalidToken
 	}
