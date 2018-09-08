@@ -8,7 +8,6 @@ import (
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"impractical.co/pqarrays"
 	yall "yall.in"
 )
 
@@ -24,7 +23,7 @@ var (
 type AccessToken struct {
 	ID          string
 	CreatedFrom string
-	Scopes      pqarrays.StringArray
+	Scopes      []string
 	ProfileID   string
 	ClientID    string
 	CreatedAt   time.Time
