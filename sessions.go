@@ -3,13 +3,16 @@ package sessions
 import (
 	"context"
 	"crypto/rsa"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/pkg/errors"
 	yall "yall.in"
 )
 
@@ -41,14 +44,33 @@ type AccessTokenClaims struct {
 }
 
 type Dependencies struct {
-	JWTPrivateKey *rsa.PrivateKey
-	JWTPublicKey  *rsa.PublicKey
-	ServiceID     string
+	JWTPrivateKey       *rsa.PrivateKey
+	JWTPublicKey        *rsa.PublicKey
+	pubKeyFingerprint   *string
+	pubKeyFingerprintMu *sync.RWMutex
+	ServiceID           string
+}
+
+func (d Dependencies) GetPublicKeyFingerprint(pk *rsa.PublicKey) (string, error) {
+	d.pubKeyFingerprintMu.RLock()
+	if d.pubKeyFingerprint != nil {
+		d.pubKeyFingerprintMu.RUnlock()
+		return *d.pubKeyFingerprint, nil
+	}
+	d.pubKeyFingerprintMu.RUnlock()
+	d.pubKeyFingerprintMu.Lock()
+	defer d.pubKeyFingerprintMu.Unlock()
+	p, err := ssh.NewPublicKey(pk)
+	if err != nil {
+		return "", errors.Wrap(err, "Error creating SSH public key")
+	}
+	fingerprint := ssh.FingerprintSHA256(p)
+	d.pubKeyFingerprint = &fingerprint
+	return *d.pubKeyFingerprint, nil
 }
 
 func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string, error) {
-	// TODO: include key id in JWT headers
-	return jwt.NewWithClaims(jwt.SigningMethodRS256, AccessTokenClaims{
+	t := jwt.NewWithClaims(jwt.SigningMethodRS256, AccessTokenClaims{
 		StandardClaims: jwt.StandardClaims{
 			Audience:  token.ClientID,
 			ExpiresAt: token.CreatedAt.UTC().Add(accessLength).Unix(),
@@ -60,13 +82,26 @@ func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string,
 		},
 		Scopes:      token.Scopes,
 		CreatedFrom: token.CreatedFrom,
-	}).SignedString(d.JWTPrivateKey)
+	})
+	fp, err := d.GetPublicKeyFingerprint(d.JWTPublicKey)
+	if err != nil {
+		return "", err
+	}
+	t.Header["kid"] = fp
+	return t.SignedString(d.JWTPrivateKey)
 }
 
 func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken, error) {
 	tok, err := jwt.ParseWithClaims(jwtVal, &AccessTokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+		}
+		fp, err := d.GetPublicKeyFingerprint(d.JWTPublicKey)
+		if err != nil {
+			return nil, err
+		}
+		if fp != token.Header["kid"] {
+			return nil, errors.New("unknown signing key")
 		}
 		return d.JWTPublicKey, nil
 	})
