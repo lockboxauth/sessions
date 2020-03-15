@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -44,39 +43,18 @@ type AccessTokenClaims struct {
 }
 
 type Dependencies struct {
-	JWTPrivateKey       *rsa.PrivateKey
-	JWTPublicKey        *rsa.PublicKey
-	pubKeyFingerprint   *string
-	pubKeyFingerprintMu *sync.RWMutex
-	ServiceID           string
+	JWTPrivateKey *rsa.PrivateKey
+	JWTPublicKey  *rsa.PublicKey
+	ServiceID     string
 }
 
-func NewDependencies(priv *rsa.PrivateKey, pub *rsa.PublicKey, service string) Dependencies {
-	var mu sync.RWMutex
-	return Dependencies{
-		JWTPrivateKey:       priv,
-		JWTPublicKey:        pub,
-		pubKeyFingerprintMu: &mu,
-		ServiceID:           service,
-	}
-}
-
-func (d Dependencies) GetPublicKeyFingerprint(pk *rsa.PublicKey) (string, error) {
-	d.pubKeyFingerprintMu.RLock()
-	if d.pubKeyFingerprint != nil {
-		d.pubKeyFingerprintMu.RUnlock()
-		return *d.pubKeyFingerprint, nil
-	}
-	d.pubKeyFingerprintMu.RUnlock()
-	d.pubKeyFingerprintMu.Lock()
-	defer d.pubKeyFingerprintMu.Unlock()
+func getPublicKeyFingerprint(pk *rsa.PublicKey) (string, error) {
 	p, err := ssh.NewPublicKey(pk)
 	if err != nil {
-		return "", errors.Wrap(err, "Error creating SSH public key")
+		return "", fmt.Errorf("Error creating SSH public key: %w", err)
 	}
 	fingerprint := ssh.FingerprintSHA256(p)
-	d.pubKeyFingerprint = &fingerprint
-	return *d.pubKeyFingerprint, nil
+	return fingerprint, nil
 }
 
 func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string, error) {
@@ -93,7 +71,7 @@ func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string,
 		Scopes:      token.Scopes,
 		CreatedFrom: token.CreatedFrom,
 	})
-	fp, err := d.GetPublicKeyFingerprint(d.JWTPublicKey)
+	fp, err := getPublicKeyFingerprint(d.JWTPublicKey)
 	if err != nil {
 		return "", err
 	}
@@ -106,7 +84,7 @@ func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken,
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
 		}
-		fp, err := d.GetPublicKeyFingerprint(d.JWTPublicKey)
+		fp, err := getPublicKeyFingerprint(d.JWTPublicKey)
 		if err != nil {
 			return nil, err
 		}
