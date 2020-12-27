@@ -3,6 +3,7 @@ package sessions
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/pkg/errors"
 	yall "yall.in"
 )
 
