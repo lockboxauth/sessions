@@ -36,7 +36,7 @@ type AccessToken struct {
 }
 
 type AccessTokenClaims struct {
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 	Scopes      []string `json:"scopes,omitempty"`
 	CreatedFrom string   `json:"from,omitempty"`
 }
@@ -58,13 +58,13 @@ func getPublicKeyFingerprint(pk *rsa.PublicKey) (string, error) {
 
 func (d Dependencies) CreateJWT(ctx context.Context, token AccessToken) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodRS256, AccessTokenClaims{
-		StandardClaims: jwt.StandardClaims{
-			Audience:  token.ClientID,
-			ExpiresAt: token.CreatedAt.UTC().Add(accessLength).Unix(),
-			Id:        token.ID,
-			IssuedAt:  token.CreatedAt.UTC().Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{token.ClientID},
+			ExpiresAt: jwt.NewNumericDate(token.CreatedAt.UTC().Add(accessLength)),
+			ID:        token.ID,
+			IssuedAt:  jwt.NewNumericDate(token.CreatedAt.UTC()),
 			Issuer:    d.ServiceID,
-			NotBefore: token.CreatedAt.UTC().Add(-1 * time.Hour).Unix(),
+			NotBefore: jwt.NewNumericDate(token.CreatedAt.UTC().Add(-1 * time.Hour)),
 			Subject:   token.ProfileID,
 		},
 		Scopes:      token.Scopes,
@@ -100,13 +100,17 @@ func (d Dependencies) Validate(ctx context.Context, jwtVal string) (AccessToken,
 	if !ok {
 		return AccessToken{}, ErrInvalidToken
 	}
+	if len(claims.Audience) < 1 {
+		yall.FromContext(ctx).Error("No claim audience set.")
+		return AccessToken{}, ErrInvalidToken
+	}
 	return AccessToken{
-		ID:          claims.Id,
+		ID:          claims.ID,
 		CreatedFrom: claims.Issuer,
 		ProfileID:   claims.Subject,
-		ClientID:    claims.Audience,
+		ClientID:    claims.Audience[0],
 		Scopes:      claims.Scopes,
-		CreatedAt:   time.Unix(claims.IssuedAt, 0),
+		CreatedAt:   claims.IssuedAt.Time,
 	}, nil
 }
 
