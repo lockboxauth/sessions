@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/ssh"
-
-	jwt "github.com/dgrijalva/jwt-go"
 	yall "yall.in"
 )
 
