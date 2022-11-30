@@ -1,7 +1,7 @@
 module lockbox.dev/sessions
 
 require (
-	github.com/golang-jwt/jwt/v4 v4.4.2
+	github.com/golang-jwt/jwt/v4 v4.4.3
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	yall.in v0.0.8
 )
